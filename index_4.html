@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>スケジュール調整</title>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    background: #f5f5f0;
+    color: #1a1a1a;
+    min-height: 100vh;
+    padding: 2rem 1rem;
+  }
+  .container { max-width: 600px; margin: 0 auto; }
+  h1 {
+    font-size: 22px;
+    font-weight: 500;
+    margin-bottom: 0.25rem;
+    letter-spacing: -0.3px;
+  }
+  .subtitle { font-size: 14px; color: #888; margin-bottom: 2rem; }
+  h3 { font-size: 15px; font-weight: 500; margin-bottom: 0.75rem; }
+  .card {
+    background: #fff;
+    border: 1px solid #e8e8e3;
+    border-radius: 12px;
+    padding: 1.25rem;
+    margin-bottom: 1rem;
+  }
+  input[type=text], input[type=date] {
+    width: 100%;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 9px 12px;
+    font-size: 14px;
+    background: #fafafa;
+    color: #1a1a1a;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  input:focus { border-color: #999; background: #fff; }
+  button {
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 9px 18px;
+    font-size: 14px;
+    background: #fff;
+    color: #1a1a1a;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  button:hover { background: #f5f5f0; }
+  button.primary {
+    background: #1a1a1a;
+    color: #fff;
+    border-color: #1a1a1a;
+  }
+  button.primary:hover { background: #333; }
+  button.danger { color: #c0392b; border-color: #f5c6c6; font-size: 12px; padding: 5px 10px; }
+  button.danger:hover { background: #fff5f5; }
+  .tab-row { display: flex; gap: 6px; margin-bottom: 1.5rem; }
+  .tab {
+    padding: 7px 18px;
+    border-radius: 20px;
+    border: 1px solid #ddd;
+    font-size: 13px;
+    cursor: pointer;
+    background: #fff;
+    color: #888;
+  }
+  .tab.active { background: #1a1a1a; color: #fff; border-color: #1a1a1a; }
+  .slot {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border: 1px solid #eee;
+    border-radius: 8px;
+    margin-bottom: 6px;
+    cursor: pointer;
+    transition: background 0.1s;
+  }
+  .slot:hover { background: #fafafa; }
+  .slot input[type=checkbox] { width: 16px; height: 16px; cursor: pointer; accent-color: #1a1a1a; }
+  .slot label { flex: 1; font-size: 14px; cursor: pointer; }
+  .result-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding: 12px 0;
+    border-bottom: 1px solid #f0f0f0;
+    gap: 12px;
+  }
+  .result-row:last-child { border-bottom: none; }
+  .result-date { font-weight: 500; font-size: 14px; }
+  .result-names { font-size: 12px; color: #888; margin-top: 3px; }
+  .badge {
+    font-size: 12px;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-weight: 500;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .badge-green { background: #e8f5e0; color: #3a6e1a; }
+  .badge-amber { background: #fef3e0; color: #8a5a10; }
+  .badge-red { background: #fcecea; color: #a0302a; }
+  .participants { display: flex; flex-wrap: wrap; gap: 6px; }
+  .pill {
+    font-size: 12px;
+    padding: 3px 12px;
+    border-radius: 20px;
+    background: #f0f0eb;
+    color: #555;
+  }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .label { font-size: 12px; color: #888; margin-bottom: 4px; }
+  .msg { font-size: 13px; margin-top: 8px; }
+  .msg.success { color: #3a6e1a; }
+  .msg.error { color: #a0302a; }
+  .empty { text-align: center; color: #aaa; font-size: 14px; padding: 2rem; }
+  .section-gap { margin-top: 1rem; }
+  .manage-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 0;
+    border-bottom: 1px solid #f0f0f0;
+    font-size: 14px;
+  }
+  .manage-row:last-child { border-bottom: none; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>📅 スケジュール調整</h1>
+  <p class="subtitle">みんなの都合のいい日を確認しましょう</p>
+
+  <div class="tab-row">
+    <button class="tab active" onclick="showTab('answer')">回答する</button>
+    <button class="tab" onclick="showTab('result')">結果を見る</button>
+    <button class="tab" onclick="showTab('manage')">日程を管理</button>
+  </div>
+
+  <!-- 回答タブ -->
+  <div id="view-answer">
+    <div class="card">
+      <h3>あなたのお名前</h3>
+      <input type="text" id="user-name" placeholder="例：田中こずえ" />
+    </div>
+    <div class="card">
+      <h3>参加できる日程にチェックを入れてください</h3>
+      <div id="slots-list"><div class="empty">読み込み中...</div></div>
+      <div class="section-gap">
+        <button class="primary" onclick="submitAnswer()" style="width:100%">回答を送信する</button>
+        <div id="answer-msg" class="msg"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 結果タブ -->
+  <div id="view-result" style="display:none">
+    <div class="card">
+      <h3>日程ごとの集計</h3>
+      <div id="result-list"><div class="empty">読み込み中...</div></div>
+    </div>
+    <div class="card">
+      <h3>回答した人</h3>
+      <div id="participant-list"><div class="empty">まだ回答がありません</div></div>
+    </div>
+  </div>
+
+  <!-- 管理タブ -->
+  <div id="view-manage" style="display:none">
+    <div class="card">
+      <h3>候補日程を追加</h3>
+      <div class="grid2">
+        <div>
+          <div class="label">日付</div>
+          <input type="date" id="new-date" />
+        </div>
+        <div>
+          <div class="label">時間帯（任意）</div>
+          <input type="text" id="new-time" placeholder="例：14:00〜16:00" />
+        </div>
+      </div>
+      <div style="margin-top:10px">
+        <button onclick="addSlot()" style="width:100%">追加する</button>
+        <div id="manage-msg" class="msg"></div>
+      </div>
+    </div>
+    <div class="card">
+      <h3>現在の候補日程</h3>
+      <div id="manage-slots-list"><div class="empty">読み込み中...</div></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyAa9O71gNQoi7xYsyEzl7WAESbH4pzf5Ok",
+  authDomain: "schedule-app-e4f23.firebaseapp.com",
+  projectId: "schedule-app-e4f23",
+  storageBucket: "schedule-app-e4f23.firebasestorage.app",
+  messagingSenderId: "873327590876",
+  appId: "1:873327590876:web:56a8e32211c2b766162319"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+let slots = [];
+let answers = {};
+
+async function loadSlots() {
+  try {
+    const snap = await db.collection('slots').orderBy('date').get();
+    slots = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    renderAnswerSlots();
+    renderManageSlots();
+  } catch(e) {
+    console.error(e);
+  }
+}
+
+async function loadAnswers() {
+  try {
+    const snap = await db.collection('answers').get();
+    answers = {};
+    snap.docs.forEach(d => { answers[d.id] = d.data(); });
+    renderResults();
+  } catch(e) {
+    console.error(e);
+  }
+}
+
+function renderAnswerSlots() {
+  const el = document.getElementById('slots-list');
+  if (!slots.length) {
+    el.innerHTML = '<div class="empty">候補日程がまだありません<br>「日程を管理」タブから追加してください</div>';
+    return;
+  }
+  el.innerHTML = slots.map(s => `
+    <div class="slot" onclick="toggleCheck('slot-${s.id}')">
+      <input type="checkbox" id="slot-${s.id}" value="${s.id}" onclick="event.stopPropagation()">
+      <label for="slot-${s.id}">${formatDate(s.date)}${s.time ? '　' + s.time : ''}</label>
+    </div>
+  `).join('');
+}
+
+function toggleCheck(id) {
+  const cb = document.getElementById(id);
+  if (cb) cb.checked = !cb.checked;
+}
+
+function renderResults() {
+  const resultEl = document.getElementById('result-list');
+  const partEl = document.getElementById('participant-list');
+  const names = Object.keys(answers);
+
+  if (!slots.length) {
+    resultEl.innerHTML = '<div class="empty">候補日程がありません</div>';
+    return;
+  }
+
+  resultEl.innerHTML = slots.map(s => {
+    const ok = names.filter(n => answers[n].slots && answers[n].slots.includes(s.id));
+    const total = names.length;
+    const pct = total ? Math.round(ok.length / total * 100) : 0;
+    let badgeClass, badgeText;
+    if (pct >= 80) { badgeClass = 'badge-green'; badgeText = `◎ ${ok.length}/${total}人`; }
+    else if (pct >= 40) { badgeClass = 'badge-amber'; badgeText = `△ ${ok.length}/${total}人`; }
+    else { badgeClass = 'badge-red'; badgeText = `✕ ${ok.length}/${total}人`; }
+    return `
+      <div class="result-row">
+        <div>
+          <div class="result-date">${formatDate(s.date)}${s.time ? '　' + s.time : ''}</div>
+          <div class="result-names">${ok.length ? ok.join('、') : 'まだ回答なし'}</div>
+        </div>
+        <span class="badge ${badgeClass}">${badgeText}</span>
+      </div>
+    `;
+  }).join('');
+
+  if (!names.length) {
+    partEl.innerHTML = '<div class="empty">まだ回答がありません</div>';
+  } else {
+    partEl.innerHTML = `<div class="participants">${names.map(n => `<span class="pill">${n}</span>`).join('')}</div>`;
+  }
+}
+
+function renderManageSlots() {
+  const el = document.getElementById('manage-slots-list');
+  if (!slots.length) {
+    el.innerHTML = '<div class="empty">まだ追加されていません</div>';
+    return;
+  }
+  el.innerHTML = slots.map(s => `
+    <div class="manage-row">
+      <span>${formatDate(s.date)}${s.time ? '　' + s.time : ''}</span>
+      <button class="danger" onclick="deleteSlot('${s.id}')">削除</button>
+    </div>
+  `).join('');
+}
+
+async function submitAnswer() {
+  const name = document.getElementById('user-name').value.trim();
+  const msg = document.getElementById('answer-msg');
+  if (!name) { msg.className = 'msg error'; msg.textContent = 'お名前を入力してください'; return; }
+  const checked = [...document.querySelectorAll('#slots-list input:checked')].map(i => i.value);
+  try {
+    await db.collection('answers').doc(name).set({ slots: checked, updatedAt: new Date().toISOString() });
+    msg.className = 'msg success'; msg.textContent = '✓ 回答を送信しました！';
+  } catch(e) {
+    msg.className = 'msg error'; msg.textContent = '送信に失敗しました。もう一度お試しください。';
+  }
+}
+
+async function addSlot() {
+  const date = document.getElementById('new-date').value;
+  const time = document.getElementById('new-time').value.trim();
+  const msg = document.getElementById('manage-msg');
+  if (!date) { msg.className = 'msg error'; msg.textContent = '日付を選択してください'; return; }
+  try {
+    await db.collection('slots').add({ date, time, createdAt: new Date().toISOString() });
+    document.getElementById('new-date').value = '';
+    document.getElementById('new-time').value = '';
+    msg.className = 'msg success'; msg.textContent = '✓ 追加しました！';
+    await loadSlots();
+  } catch(e) {
+    msg.className = 'msg error'; msg.textContent = '追加に失敗しました。';
+  }
+}
+
+async function deleteSlot(id) {
+  if (!confirm('この候補日程を削除しますか？')) return;
+  try {
+    await db.collection('slots').doc(id).delete();
+    await loadSlots();
+  } catch(e) {
+    alert('削除に失敗しました。');
+  }
+}
+
+function formatDate(str) {
+  if (!str) return '';
+  const d = new Date(str + 'T00:00:00');
+  const w = ['日','月','火','水','木','金','土'][d.getDay()];
+  return `${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日（${w}）`;
+}
+
+function showTab(tab) {
+  ['answer','result','manage'].forEach((t, i) => {
+    document.querySelectorAll('.tab')[i].classList.toggle('active', t === tab);
+    document.getElementById('view-' + t).style.display = t === tab ? 'block' : 'none';
+  });
+  if (tab === 'result') loadAnswers();
+  if (tab === 'manage') loadSlots();
+}
+
+loadSlots();
+loadAnswers();
+</script>
+</body>
+</html>
